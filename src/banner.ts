@@ -1,6 +1,8 @@
 import {
   Box3,
   DirectionalLight,
+  InstancedMesh,
+  Matrix4,
   Mesh,
   MeshBasicMaterial,
   MeshNormalMaterial,
@@ -33,33 +35,39 @@ export function createBannerRender(container: HTMLElement): {
   container.appendChild(renderer.domElement)
 
   // TODO: 动态的求出实际需要的行列数量
-  const rowCount = 45
-  const columnCount = 45
-  const cubes = createCubes(rowCount, columnCount, 100, 10)
-  const textCubes = getTextCubes(cubes, rowCount, columnCount, 'C K B')
-  textCubes.forEach((cube) => {
-    if (Array.isArray(cube.material)) return
-    // TODO: 玻璃材质的灯箱效果不太好实现，先暂时用 MeshNormalMaterial
-    // cube.material = new MeshNormalMaterial()
-    cube.position.add(new Vector3(0, 40, 0))
-    const size = 96
-    const boxGeometry = new RoundedBoxGeometry(size, size, 5, 6, 6)
-    const boxMaterial = new MeshBasicMaterial({ color: 0x2dc26b })
-    const subGreen = new Mesh(boxGeometry, boxMaterial)
-    subGreen.position.z = 100 - (100 - size / 2) - 5
-    const boxMaterial2 = new MeshBasicMaterial({ color: 0x5784da })
-    const subBlue = new Mesh(boxGeometry, boxMaterial2)
-    subBlue.position.z = -(100 - (100 - size / 2) - 5)
-    cube.add(subGreen)
-    cube.add(subBlue)
-  })
-  cubes.forEach((cube) => scene.add(cube))
+  const rowCount = 145
+  const columnCount = 145
+  const useInstanced = false
+  if (useInstanced) {
+    const mesh = createInstancedCube(rowCount, columnCount, 100, 10)
+    scene.add(mesh)
+  } else {
+    const cubes = createCubes(rowCount, columnCount, 100, 10)
+    const textCubes = getTextCubeIndexes(rowCount, columnCount, 'C K B')
+    textCubes.forEach((idx) => {
+      const cube = cubes[idx]
+      // TODO: 玻璃材质的灯箱效果不太好实现，先暂时用 MeshNormalMaterial
+      // cube.material = new MeshNormalMaterial()
+      cube.position.add(new Vector3(0, 40, 0))
+      const size = 96
+      const boxGeometry = new RoundedBoxGeometry(size, size, 5, 6, 6)
+      const boxMaterial = new MeshBasicMaterial({ color: 0x2dc26b })
+      const subGreen = new Mesh(boxGeometry, boxMaterial)
+      subGreen.position.z = 100 - (100 - size / 2) - 5
+      const boxMaterial2 = new MeshBasicMaterial({ color: 0x5784da })
+      const subBlue = new Mesh(boxGeometry, boxMaterial2)
+      subBlue.position.z = -(100 - (100 - size / 2) - 5)
+      cube.add(subGreen)
+      cube.add(subBlue)
+    })
+    cubes.forEach((cube) => scene.add(cube))
+  }
 
   const light = new DirectionalLight(0xfff0dd, 20)
   light.position.set(0, 50, 120)
   scene.add(light)
 
-  const useControls = false
+  const useControls = true
   const controls = useControls
     ? new OrbitControls(camera, renderer.domElement)
     : null
@@ -139,8 +147,47 @@ function createCubes(
   return cubes
 }
 
-function getTextCubes(
-  cubes: Mesh[],
+function createInstancedCube(
+  rowCount: number,
+  columnCount: number,
+  size: number,
+  gap: number,
+  centerPos: Vector3 = new Vector3(0, 0, 0)
+) {
+  const boxGeometry = new RoundedBoxGeometry(size, size, size, 6, 6)
+  const boxMaterial = new MeshPhysicalMaterial({
+    metalness: 0,
+    roughness: 0.6,
+    transmission: 1,
+  })
+  const cubesMesh = new InstancedMesh(
+    boxGeometry,
+    boxMaterial,
+    rowCount * columnCount
+  )
+  const cubeWidth = 100
+  const cubeLong = 100
+
+  const fullWidthWithGap = (cubeWidth + gap) * columnCount
+  const fullLongWithGap = (cubeLong + gap) * rowCount
+
+  const matrix = new Matrix4()
+  for (let z = 0; z < rowCount; z++) {
+    for (let x = 0; x < columnCount; x++) {
+      const xOffset = x * (cubeWidth + gap)
+      const zOffset = z * (cubeLong + gap)
+      matrix.setPosition(
+        centerPos.x + (xOffset + gap / 2 + cubeWidth - fullWidthWithGap / 2),
+        centerPos.y,
+        centerPos.z + (zOffset + gap / 2 + cubeLong - fullLongWithGap / 2)
+      )
+      cubesMesh.setMatrixAt(z * columnCount + x, matrix)
+    }
+  }
+  return cubesMesh
+}
+
+function getTextCubeIndexes(
   rowCount: number,
   columnCount: number,
   text: string,
@@ -183,35 +230,5 @@ function getTextCubes(
     [29, 20],
     [29, 21],
     [29, 23],
-  ].map(([x, z]) => cubes[z * columnCount + x])
-
-  // const canvas = document.createElement('canvas')
-  // // 将立方体当作像素
-  // canvas.width = columnCount
-  // canvas.height = rowCount
-  // const context = canvas.getContext('2d')!
-  // context.fillStyle = 'white'
-  // context.fillRect(0, 0, canvas.width, canvas.height)
-  // context.fillStyle = 'black'
-  // context.font = font
-  // context.textAlign = 'center'
-  // context.textBaseline = 'middle'
-  // context.fillText(text, canvas.width / 2, canvas.height / 2)
-
-  // const pixels = Array.from(
-  //   context.getImageData(0, 0, canvas.width, canvas.height).data
-  // )
-  // const coloredCubes: Mesh[] = []
-  // for (let z = 0; z < rowCount; z++) {
-  //   for (let x = 0; x < columnCount; x++) {
-  //     const i = (z * columnCount + x) * 4
-  //     const rgba = pixels.slice(i, i + 4)
-  //     const isWhite = rgba.every((n) => n === 255)
-  //     if (!isWhite) {
-  //       // console.log({ x, z, idx: z * columnCount + x })
-  //       coloredCubes.push(cubes[z * columnCount + x])
-  //     }
-  //   }
-  // }
-  // return coloredCubes
+  ].map(([x, z]) => z * columnCount + x)
 }
